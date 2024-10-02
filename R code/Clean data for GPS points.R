@@ -49,19 +49,11 @@ mar24 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points March 
   )) |>
   mutate(Season = "Spring")
 
-may24 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points May 2024.csv", na.strings=c("","NA")) |>
-  rename(Molecular.species = Species) |>
-  mutate(Species = case_when(
-    !is.na(Molecular.species) ~ Molecular.species,
-    TRUE ~ field.guess
-  )) |>
-  mutate(Season = "Spring")
-
 # Bind them together
 truffles = jan24 |>
   bind_rows(jun23, nov23, oct23.1, oct23.2, mar24) |>
   mutate(Point = as.character(Point)) |>
-  bind_rows(sep23, may24) |>
+  bind_rows(sep23) |>
   select(Point, Species, Date, Season) |>
   # The GPS has changed how points are labeled
   mutate(Point = paste0("0", Point)) |>

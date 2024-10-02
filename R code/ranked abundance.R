@@ -20,6 +20,7 @@ trufflepoints_2324_june = read.csv("spatial/csnmmaygpxfiles/2024.05.05 waypoint 
     str_detect(Point, "Elapho") ~ "Elaphomyces",
     str_detect(Point, "Gaut") ~ "Gautieria",
     str_detect(Point, "Gena") ~ "Genea",
+    str_detect(Point, "Genea") ~ "Genea",
     str_detect(Point, "Geopo") ~ "Geopora",
     str_detect(Point, "Glom") ~ "Glomerales",
     str_detect(Point, "Gnea") ~ "Genea",
@@ -46,6 +47,8 @@ trufflepoints_2324_june = read.csv("spatial/csnmmaygpxfiles/2024.05.05 waypoint 
   )) |>
   drop_na(Genus) |>
   select(Genus, Point, Date, Season)
+
+write.csv(trufflepoints_2324_june, "output/2024.09.29_MayForay.csv")
 
 trufflepoints_2324 = read.csv("clean_data/CSNM_GPSpoints_2023-24.csv") |>
   bind_rows(

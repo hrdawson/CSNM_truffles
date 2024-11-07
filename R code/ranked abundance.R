@@ -4,10 +4,6 @@ library(stringr)
 
 trufflepoints_2324 = read.csv("clean_data/CSNM_GPSpoints_2023-24.csv") |>
   mutate(Date = lubridate::ymd(Date)) |>
-  bind_rows(read.csv("spatial/waypoint keys/2024.07.26 waypoint key.csv") |> mutate(Point = as.character(Point),
-                                                                            Season = "Summer",
-                                                                            Date = lubridate::ymd("2024-07-26")) |>
-            separate(species, into = "Genus")) |>
   select(Species, Genus, Point, Date, Season)
 
 trufflepoints_2223 = read.csv("spatial/waypoint keys/2022.10.30 waypoint key.csv") |>
@@ -29,31 +25,33 @@ trufflepoints_2223 = read.csv("spatial/waypoint keys/2022.10.30 waypoint key.csv
   # Add species
   rename(field.guess = species) |>
   mutate(species = case_when(
-    field.guess %in% c("#2", "#33") ~ "Elaphomyces sp. CS2",
-    field.guess %in% c("#3 Genea", "#4 Genea") ~ "Genea sp. CS3",
-    field.guess %in% c("#5", "#11", "#15") ~ "Choiromyces sp. CS5",
-    field.guess %in% c("#6", "#7", "#8") ~ "Russula cf. similaris",
-    field.guess == "#9" ~ "Leucogaster odoratus",
-    field.guess == "#10" ~ "Rhizopogon sp. CS10",
-    field.guess %in% c("#12", "#13", "#14", "#20", "#24") ~ "Tuber aff. anniae",
-    field.guess == "#16" ~ "Gautieria sp. CS16",
-    field.guess == "#17" ~ "Gautieria sp. CS17",
-    field.guess == "#18" ~ "Leucogaster sp. CS18",
-    field.guess %in% c("#19", "#23") ~ "Tuber whetstonense",
-    field.guess == "#21" ~ "Hysterangium cf. setchellii",
-    field.guess == "#22" ~ "Tuber sp. CS22",
-    field.guess %in% c("#25", "#27") ~ "Tuber beyerlei",
-    field.guess == "#26" ~ "Choiromyces",
-    field.guess %in% c("#30", "#37") ~ "Balsamia aff. filamentosa",
-    field.guess == "#32" ~ "Balsamia cf. setchellii",
-    field.guess == "#35" ~ "Tuber candidum",
-    field.guess == "#39" ~ "Genea arenaria",
-    field.guess == "#40" ~ "Lactarius sp. CS40",
-    field.guess %in% c("Balsamia 42", "Balsamia 1", "Balsamia 43") ~ "Balsamia aff. latispora",
-    field.guess %in% c("Genea 45", "Genea 46") ~ "Genea aff. harknessii",
-    field.guess == "Leucangium 44" ~ "Leucangium carthusianum",
-    field.guess == "Elaphomyces 50" ~ "Elaphomyces sp. CS50",
-    field.guess == "Hysterangium 49" ~ "Hysterangium sp. CS38",
+    original.ID %in% c("#2", "#33") ~ "Elaphomyces sp. CS2",
+    original.ID %in% c("#3 Genea", "#4 Genea") ~ "Genea sp. CS3",
+    original.ID == "Genea 45" ~ "Genea sp. CS45",
+    original.ID == "Genea 46" ~ "Genea sp. CS46",
+    original.ID %in% c("#5", "#11", "#15") ~ "Choiromyces sp. CS5",
+    original.ID %in% c("#6", "#7", "#8") ~ "Russula cf. similaris",
+    original.ID == "#9" ~ "Leucogaster odoratus",
+    original.ID == "#10" ~ "Rhizopogon sp. CS10",
+    original.ID %in% c("#12", "#13", "#14", "#20", "#24") ~ "Tuber aff. anniae",
+    original.ID == "#16" ~ "Gautieria sp. CS16",
+    original.ID == "#17" ~ "Gautieria sp. CS17",
+    original.ID == "#18" ~ "Leucogaster sp. CS18",
+    original.ID %in% c("#19", "#23") ~ "Tuber whetstonense",
+    original.ID == "#21" ~ "Hysterangium cf. setchellii",
+    original.ID == "#22" ~ "Tuber sp. CS22",
+    original.ID %in% c("#25", "#27") ~ "Tuber beyerlei",
+    original.ID == "#26" ~ "Choiromyces",
+    original.ID %in% c("#30", "#37") ~ "Balsamia aff. filamentosa",
+    original.ID == "#32" ~ "Balsamia cf. setchellii",
+    original.ID == "#35" ~ "Tuber candidum",
+    original.ID == "#39" ~ "Genea arenaria",
+    original.ID == "#40" ~ "Lactarius sp. CS40",
+    original.ID %in% c("Balsamia 42", "Balsamia 1", "Balsamia 43") ~ "Balsamia aff. latispora",
+    original.ID == "Leucangium 44" ~ "Leucangium carthusianum",
+    original.ID == "Elaphomyces 50" ~ "Elaphomyces sp. CS50",
+    original.ID == "Hysterangium 49" ~ "Hysterangium sp. CS38",
+    original.ID == "Hymenogaster 57" ~ "Hymenogaster raphanodorus",
     TRUE ~ field.guess
   )) |>
   select(waypoint, species, Season, Date) |>
@@ -73,7 +71,9 @@ trufflepoints = trufflepoints_2223 |>
     Genus == "Zygomyces" ~ "Glomeraceae",
     Genus == "Glomerales" ~ "Glomeraceae",
     Genus == "Gymnomyces" ~ "Russula",
+    Genus == "Genear" ~ "Genea",
     Genus == "Glomus" ~ "Glomeraceae",
+    Genus == "Hydnotryopsis" ~ "Sarcosphaera",
     Genus == "Zelleromyces" ~ "Lactarius",
     Genus == "Phallales" ~ "Trappea",
     Genus == "Albatrellaceae" ~ "Leucophleps",
@@ -86,24 +86,32 @@ trufflepoints = trufflepoints_2223 |>
   Species = coalesce(Species_original, Genus),
   Species_updated = case_when(
     Genus == "Agaricus" ~ "Agaricus cf. inapertus",
-    Genus == "Alpova" ~ "Alpova cf. trappei",
+    Genus == "Alpova" ~ "Alpova trappei",
     Species == "Balsamia cf. latispora w/Microascus sp." ~ "Balsamia cf. latispora",
+    # Species %in% c("Balsamia latispora", "Balsamia cf. latispora", "Balsamia aff. latispora") ~ "Balsamia latispora",
     Genus == "Cazia" ~ "Cazia flexiascus",
+    Species == "Choiromyces alveolatus" ~ "Choiromyces", # Only CS61 can be confidently called cf alveolatus
+    Species == "Choiromyces sp. CS52" ~ "Choiromyces sp. CS5",
     Genus == "Coniophora" ~ "Coniphora sp. CS143",
     Genus == "Cortinarius" ~ "Cortinarius pinguis",
     Species == "Elaphomyces sp" ~ "Elaphomyces",
     Species == "Gautieria sp" ~ "Gautieria",
-    Species == "Gautieria cf. pterosperma" ~ "Gautieria cf. 'pterosperma'",
+    Species == "Gautieria cf. pterosperma" ~ "Gautieria sp. CS53",
     Species == "Geastrales sp. CS131" ~ "Geastrum sp. CS131",
     Species == "Geastrales sp. CS140" ~ "Geastrum sp. CS140",
-    Species %in% c("Genea sp") ~ "Genea",
+    Species %in% c("Genea sp", "Genea harknessii", "Genea gardneri") ~ "Genea",
+    Species == "Genear arenaria" ~ "Genea arenaria",
     Species %in% c("Glomerales", "Zygomyces") ~ "Glomeraceae",
-    Genus == "Hydnotryopsis" ~ "Hydnotryopsis cf. setchellii",
+    Species %in% c("Hydnotryopsis", "Hydnotryopsis cf. setchellii", "Hydnotryopsis setchellii") ~ "Sarcosphaera cf. setchellii",
+    Species == "Hydnotryopsis sp. CS252" ~ "Sarcosphaera sp. CS252",
     Species == "Hysterangium sp" ~ "Hysterangium",
+    Species %in% c("Hysterangium sp. CS75", "Hysterangium sp. CS134") ~ "Hysterangium sp. CS38",
     Species == "Zelleromyces" ~ "Lactarius",
     Genus == "Zelleromyces" ~ "Lactarius",
     Species == "Lactarius sp. CS78" ~ "Lactarius sp. CS40",
     Genus == "Leucangium" ~ "Leucangium carthusianum",
+    Species == "Leucogaster odoratus" ~ "Leucogaster cf. odoratus",
+    Species %in% c("Leucogaster sp. CS107", "Leucogaster citrinus") ~ "Leucogaster",
     Species %in% c("Leucogaster cf. rubescens", "Leucogaster sp. CS89") ~ "Leucogaster rubescens",
     Species == "Albatrellaceae sp. CS113" ~ "Leucophleps sp. CS113",
     Genus == "Lepiota" ~ "Lepiota viridigleba",
@@ -117,6 +125,9 @@ trufflepoints = trufflepoints_2223 |>
     Genus == "Sedecula" ~ "Seducula pulvinata",
     Genus == "Trappea" ~ "Trappea sp. CS127",
     Species == "Tuber sp" ~ "Tuber",
+    Species == "Tuber anniae" ~ "Tuber aff. anniae",
+    Species == "Tuber cf. candidum" ~ "Tuber candidum",
+    Species == "Tuber cf. whetstonense" ~ "Tuber whetstonense",
     Species == "Phylum unknown" ~ "Unknown",
     Genus == "Xerocomellus" ~ "Xerocomellus sp. CS129",
     TRUE ~ Species
@@ -124,14 +135,14 @@ trufflepoints = trufflepoints_2223 |>
   Species_updated = trimws(Species_updated)
   )
 
-write.csv(trufflepoints, "output/2024.10.09_AllTrufflePoints.csv")
+# write.csv(trufflepoints, "output/2024.10.09_AllTrufflePoints.csv")
 
-trufflepoints |>
+spp.list = trufflepoints |>
   group_by(Genus, Species_updated, Season) |>
   summarize(n = length(Species_updated)) |>
   pivot_wider(names_from = Season, values_from = n, values_fill = 0) |>
-  arrange(Species_updated) |>
-  write.csv("output/2024.10.16_SpeciesCounts.csv")
+  arrange(Species_updated)
+  write.csv("output/2024.10.25_SpeciesCounts.csv", row.names = FALSE)
 
 trufflecounts = trufflepoints |>
   group_by(Genus) |>
@@ -164,7 +175,7 @@ ggplot(abundance, aes(x = reorder(Genus, -ct), y = ct, fill = category)) +
         legend.position = "none")
 
 # ggsave("presentation/2024.06.05_TruffleFreq.png", width = 19, height = 10, units = "in")
-ggsave("output/2024.09.28_TruffleFreq.png", width = 19, height = 10, units = "in")
+# ggsave("output/2024.09.28_TruffleFreq.png", width = 19, height = 10, units = "in")
 
 # Seasonal abundance ----
 trufflecounts.seasonal = trufflepoints |>
@@ -198,7 +209,7 @@ ggplot(abundance.seasonal, aes(x = Genus, y = ct, fill = category)) +
         text=element_text(size=20),
         panel.grid.minor = element_blank())
 
-ggsave("output/2024.09.28_TruffleFreq_seasonal_alphabetical.png", width = 19, height = 10, units = "in")
+# ggsave("output/2024.09.28_TruffleFreq_seasonal_alphabetical.png", width = 19, height = 10, units = "in")
 
 ## Visualise with independent X ----
 plot.abundance = function(season){

@@ -1,8 +1,9 @@
 library(tidyverse)
 library(tidylog)
 # We have several formats going on so importing separately, harmonising, then joining
-jan24 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points January '24.csv") |>
-  mutate(Season = "Winter")
+jan24 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points January '24.csv", na.strings=c("","NA")) |>
+  mutate(Season = "Winter",
+         Species = coalesce(Species, field.guess))
 
 jun23 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points June '23.csv", na.strings=c("","NA")) |>
   mutate(Species = coalesce(Species, Molecular.species),
@@ -64,11 +65,19 @@ may24 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points May 20
   )) |>
   mutate(Season = "Spring")
 
+jul24 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points July 2024.csv", na.strings=c("","NA")) |>
+  mutate(Point = as.character(Point),
+         Season = "Summer",
+         Date = "2024-07-26",
+         Species = coalesce(Species, field.guess),
+         Specimen = as.numeric(str_extract(Specimen, '[:digit:]')))
+
+
 # Bind them together
 truffles = jan24 |>
   bind_rows(jun23, nov23, oct23.1, oct23.2, mar24) |>
   mutate(Point = as.character(Point)) |>
-  bind_rows(sep23, may24) |>
+  bind_rows(sep23, may24, jul24) |>
   select(Point, Species, Date, Season) |>
   # The GPS has changed how points are labeled
   mutate(Point = paste0("0", Point)) |>

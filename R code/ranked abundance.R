@@ -42,11 +42,13 @@ trufflepoints_2223 = read.csv("spatial/waypoint keys/2022.10.30 waypoint key.csv
     original.ID == "#22" ~ "Tuber sp. CS22",
     original.ID %in% c("#25", "#27") ~ "Tuber beyerlei",
     original.ID == "#26" ~ "Choiromyces",
-    original.ID %in% c("#30", "#37") ~ "Balsamia aff. filamentosa",
-    original.ID == "#32" ~ "Balsamia cf. setchellii",
-    original.ID == "#35" ~ "Tuber candidum",
-    original.ID == "#39" ~ "Genea arenaria",
-    original.ID == "#40" ~ "Lactarius sp. CS40",
+    original.ID %in% c("#30 Balsamia", "#37 Balsamia") ~ "Balsamia aff. filamentosa",
+    original.ID == "#32 Balsamia" ~ "Balsamia cf. setchellii",
+    original.ID == "#33 Elapho" ~ "Elaphomyces sp. CS2",
+    original.ID == "#35 Tuber" ~ "Tuber candidum",
+    original.ID == "#38 Balsamia" ~ "Hysterangium sp. CS38",
+    original.ID == "#39 Genea" ~ "Genea arenaria",
+    original.ID == "#40 Zellero" ~ "Lactarius sp. CS40",
     original.ID %in% c("Balsamia 42", "Balsamia 1", "Balsamia 43") ~ "Balsamia aff. latispora",
     original.ID == "Leucangium 44" ~ "Leucangium carthusianum",
     original.ID == "Elaphomyces 50" ~ "Elaphomyces sp. CS50",
@@ -54,6 +56,7 @@ trufflepoints_2223 = read.csv("spatial/waypoint keys/2022.10.30 waypoint key.csv
     original.ID == "Hymenogaster 57" ~ "Hymenogaster raphanodorus",
     TRUE ~ field.guess
   )) |>
+  relocate(species, .after = field.guess) |>
   select(waypoint, species, Season, Date) |>
   separate(species, into = "Genus", remove = FALSE) |>
   mutate(across(c(species, Genus), ~na_if(., ""))) |>

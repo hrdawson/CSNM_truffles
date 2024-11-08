@@ -60,6 +60,7 @@ may24 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points May 20
                      na.strings=c("","NA"))) |>
   rename(Molecular.species = Species) |>
   mutate(Species = case_when(
+    Point == "Pogie" & Date == "2024-05-26" ~ "Unknown",
     !is.na(Molecular.species) ~ Molecular.species,
     TRUE ~ field.guess
   )) |>

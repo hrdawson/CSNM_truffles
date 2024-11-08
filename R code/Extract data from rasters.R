@@ -64,9 +64,10 @@ basic.clim = function(folderpath, points) {
   #Read rasters
   files <- dir(folderpath, pattern = "*.tif")
   #Combine rasters into a rasterStack
-  alldata <- files%>%
-    purrr::map(~ raster(file.path(folderpath, .))) %>%
-    reduce(stack)
+  # alldata <- files%>%
+  #   purrr::map(~ raster(file.path(folderpath, .))) %>%
+  #   reduce(stack)
+  terra::rast(files)
   #extract raster data for each point
   data = alldata %>%
     raster::extract(points)%>%

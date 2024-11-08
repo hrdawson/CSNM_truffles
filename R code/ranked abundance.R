@@ -4,24 +4,25 @@ library(stringr)
 
 trufflepoints_2324 = read.csv("clean_data/CSNM_GPSpoints_2023-24.csv") |>
   mutate(Date = lubridate::ymd(Date)) |>
-  select(Species, Genus, Point, Date, Season)
+  select(Species, Genus, Point, Date, Season, Habitat)
 
-trufflepoints_2223 = read.csv("spatial/waypoint keys/2022.10.30 waypoint key.csv") |>
+trufflepoints_2223 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points Oct '22.csv") |>
   mutate(Season = "Autumn") |>
-  bind_rows(read.csv("spatial/waypoint keys/2023.02.04 waypoint key.csv") |> mutate(Season = "Winter"),
-            read.csv("spatial/waypoint keys/2023.05.13 waypoint key.csv") |> mutate(Season = "Spring"),
-            read.csv("spatial/waypoint keys/2023.05.14 waypoint key.csv") |> mutate(Season = "Spring")) |>
-  # Add dates
-  mutate(Date = case_when(
-    waypoint >= 296 & waypoint <= 309 ~ "2022-10-30",
-    waypoint >= 310 & waypoint <= 367 ~ "2022-10-31",
-    waypoint >= 368 & waypoint <= 373 ~ "2022-11-01",
-    waypoint >= 396 & waypoint < 492 ~ "2023-02-04",
-    waypoint == 492 & Season == "Winter" ~ "2023-02-04", #Note that 492 somehow was duplicated between Feb and May
-    waypoint == 492 & Season == "Spring" ~ "2023-05-14",
-    waypoint > 492 & waypoint <= 511 ~ "2023-05-14",
-    TRUE ~ "2023-05-13"
-  )) |>
+  bind_rows(read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points Feb '23.csv") |>
+              mutate(Season = "Winter"),
+            read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points May '23.csv") |>
+              mutate(Season = "Spring")) |>
+  # # Add dates
+  # mutate(Date = case_when(
+  #   waypoint >= 296 & waypoint <= 309 ~ "2022-10-30",
+  #   waypoint >= 310 & waypoint <= 367 ~ "2022-10-31",
+  #   waypoint >= 368 & waypoint <= 373 ~ "2022-11-01",
+  #   waypoint >= 396 & waypoint < 492 ~ "2023-02-04",
+  #   waypoint == 492 & Season == "Winter" ~ "2023-02-04", #Note that 492 somehow was duplicated between Feb and May
+  #   waypoint == 492 & Season == "Spring" ~ "2023-05-14",
+  #   waypoint > 492 & waypoint <= 511 ~ "2023-05-14",
+  #   TRUE ~ "2023-05-13"
+  # )) |>
   # Add species
   rename(field.guess = species) |>
   mutate(species = case_when(
@@ -57,7 +58,7 @@ trufflepoints_2223 = read.csv("spatial/waypoint keys/2022.10.30 waypoint key.csv
     TRUE ~ field.guess
   )) |>
   relocate(species, .after = field.guess) |>
-  select(waypoint, species, Season, Date) |>
+  select(waypoint, species, Season, Date, Habitat) |>
   separate(species, into = "Genus", remove = FALSE) |>
   mutate(across(c(species, Genus), ~na_if(., ""))) |>
   drop_na(Genus) |>
@@ -70,7 +71,7 @@ trufflepoints = trufflepoints_2223 |>
   filter(Genus != "Tomst") |>
   filter(Genus != "") |>
   mutate(Genus = case_when(
-    Genus == "Endogone" ~ "Endogonaceae",
+    Genus == "Endogonaceae" ~ "Endogone",
     Genus == "Zygomyces" ~ "Glomeraceae",
     Genus == "Glomerales" ~ "Glomeraceae",
     Genus == "Gymnomyces" ~ "Russula",
@@ -136,16 +137,73 @@ trufflepoints = trufflepoints_2223 |>
     TRUE ~ Species
   ),
   Species_updated = trimws(Species_updated)
-  )
+  ) |>
+  # Add in taxonomy
+  left_join(read.csv("raw_data/2024.11.08_Genera.csv") |> rename(Genus = Taxon))
 
-# write.csv(trufflepoints, "output/2024.10.09_AllTrufflePoints.csv")
+# write.csv(trufflepoints, "output/2024.11.08_AllTrufflePoints.csv")
+
+# Make lists of genera and species -----
+## Habitat ----
+genera.list.habitat = trufflepoints |>
+  select(Phylum, Order, Family, Genus, Habitat) |>
+  distinct() |>
+  mutate(n = "X") |>
+  pivot_wider(names_from = Habitat, values_from = n, values_fill = "--") |>
+  arrange(Phylum, Order, Family, Genus) |>
+  relocate(Mixed, .after = Oak) |>
+  rename(Taxon = Genus)
+  # write.csv("output/2024.11.08_Genera.csv", row.names = FALSE)
+
+species.list.habitat = trufflepoints |>
+  filter(Species_updated != Genus) |>
+  select(Phylum, Order, Family, Species_updated, Habitat) |>
+  mutate(n = "X") |>
+  distinct() |>
+  pivot_wider(names_from = Habitat, values_from = n, values_fill = "--") |>
+  arrange(Phylum, Order, Family, Species_updated) |>
+  relocate(Mixed, .after = Oak) |>
+  rename(Taxon = Species_updated)
+
+table.lists.habitat = genera.list.habitat |>
+  bind_rows(species.list.habitat)
+
+## Season ----
+genera.list.season = trufflepoints |>
+  select(Phylum, Order, Family, Genus, Season) |>
+  distinct() |>
+  mutate(n = "X") |>
+  pivot_wider(names_from = Season, values_from = n, values_fill = "--") |>
+  arrange(Phylum, Order, Family, Genus) |>
+  # relocate(Mixed, .after = Oak) |>
+  rename(Taxon = Genus)
+
+species.list.season = trufflepoints |>
+  filter(Species_updated != Genus) |>
+  select(Phylum, Order, Family, Species_updated, Season) |>
+  mutate(n = "X") |>
+  distinct() |>
+  pivot_wider(names_from = Season, values_from = n, values_fill = "--") |>
+  arrange(Phylum, Order, Family, Species_updated) |>
+  # relocate(Mixed, .after = Oak) |>
+  rename(Taxon = Species_updated)
+
+table.lists.season = genera.list.season |>
+  bind_rows(species.list.season)
+
+table.lists = table.lists.habitat |>
+  left_join(table.lists.season) |>
+  relocate(Phylum, Order, Family, .after = last_col()) |>
+  write.csv("output/2024.11.08_Table1.csv", row.names = FALSE)
 
 spp.list = trufflepoints |>
   group_by(Genus, Species_updated, Season) |>
   summarize(n = length(Species_updated)) |>
   pivot_wider(names_from = Season, values_from = n, values_fill = 0) |>
-  arrange(Species_updated)
+  arrange(Species_updated) |>
   write.csv("output/2024.10.25_SpeciesCounts.csv", row.names = FALSE)
+
+# Calculate abundance ----
 
 trufflecounts = trufflepoints |>
   group_by(Genus) |>
@@ -244,7 +302,7 @@ plot_layout(nrow = 2, heights = c(1, 3), axes = "collect")
 
 # ggsave("output/2024.10.04_TruffleFreq_seasonal_freeX.png", width = 19, height = 10, units = "in")
 # ggsave("output/2024.10.05_TruffleFreq_seasonal_freeX.png", width = 19, height = 10, units = "in")
-ggsave("output/2024.10.09_TruffleFreq_all.png", width = 15, height = 15, units = "in")
+ggsave("output/2024.11.08_TruffleFreq_all.png", width = 15, height = 15, units = "in")
 
 ## Stacked ----
 ggplot(abundance.seasonal, aes(x = Genus, y = ct, fill = category)) +

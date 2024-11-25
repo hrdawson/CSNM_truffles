@@ -79,7 +79,7 @@ truffles = jan24 |>
   bind_rows(jun23, nov23, oct23.1, oct23.2, mar24) |>
   mutate(Point = as.character(Point)) |>
   bind_rows(sep23, may24, jul24) |>
-  select(Point, Species, Date, Season, Habitat) |>
+  select(Point, Species, Date, Site, Season, Habitat) |>
   # The GPS has changed how points are labeled
   mutate(Point = paste0("0", Point)) |>
   separate(Species, into = "Genus", remove = FALSE) |>

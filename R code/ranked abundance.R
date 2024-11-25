@@ -4,7 +4,7 @@ library(stringr)
 
 trufflepoints_2324 = read.csv("clean_data/CSNM_GPSpoints_2023-24.csv") |>
   mutate(Date = lubridate::ymd(Date)) |>
-  select(Species, Genus, Point, Date, Season, Habitat)
+  select(Species, Genus, Point, Date, Site, Season, Habitat)
 
 trufflepoints_2223 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points Oct '22.csv") |>
   mutate(Season = "Autumn") |>
@@ -12,17 +12,6 @@ trufflepoints_2223 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS 
               mutate(Season = "Winter"),
             read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points May '23.csv") |>
               mutate(Season = "Spring")) |>
-  # # Add dates
-  # mutate(Date = case_when(
-  #   waypoint >= 296 & waypoint <= 309 ~ "2022-10-30",
-  #   waypoint >= 310 & waypoint <= 367 ~ "2022-10-31",
-  #   waypoint >= 368 & waypoint <= 373 ~ "2022-11-01",
-  #   waypoint >= 396 & waypoint < 492 ~ "2023-02-04",
-  #   waypoint == 492 & Season == "Winter" ~ "2023-02-04", #Note that 492 somehow was duplicated between Feb and May
-  #   waypoint == 492 & Season == "Spring" ~ "2023-05-14",
-  #   waypoint > 492 & waypoint <= 511 ~ "2023-05-14",
-  #   TRUE ~ "2023-05-13"
-  # )) |>
   # Add species
   rename(field.guess = species) |>
   mutate(species = case_when(
@@ -58,7 +47,7 @@ trufflepoints_2223 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS 
     TRUE ~ field.guess
   )) |>
   relocate(species, .after = field.guess) |>
-  select(waypoint, species, Season, Date, Habitat) |>
+  select(waypoint, species, Season, Site, Date, Habitat) |>
   separate(species, into = "Genus", remove = FALSE) |>
   mutate(across(c(species, Genus), ~na_if(., ""))) |>
   drop_na(Genus) |>
@@ -70,7 +59,14 @@ trufflepoints = trufflepoints_2223 |>
   bind_rows(trufflepoints_2324) |>
   filter(Genus != "Tomst") |>
   filter(Genus != "") |>
-  mutate(Genus = case_when(
+  mutate(
+    Site = case_when(
+      Site == "Mixed oak-conifer" ~ "Site 1",
+      Site == "PCT Pilot" ~ "PCT Pilot Rock",
+      Site == "Tyler Rd" ~ "Taylor Rd",
+      TRUE ~ Site
+    ),
+    Genus = case_when(
     Genus == "Endogonaceae" ~ "Endogone",
     Genus == "Zygomyces" ~ "Glomeraceae",
     Genus == "Glomerales" ~ "Glomeraceae",
@@ -99,6 +95,7 @@ trufflepoints = trufflepoints_2223 |>
     Genus == "Cazia" ~ "Cazia flexiascus",
     Species == "Choiromyces alveolatus" ~ "Choiromyces", # Only CS61 can be confidently called cf alveolatus
     Species == "Choiromyces sp. CS52" ~ "Choiromyces sp. CS5",
+    Species == "Choiromyces cf. alveolatus" ~ "Choiromyces sp. CS61",
     Genus == "Coniophora" ~ "Coniphora sp. CS143",
     Genus == "Cortinarius" ~ "Cortinarius pinguis",
     Species == "Elaphomyces sp" ~ "Elaphomyces",
@@ -108,6 +105,7 @@ trufflepoints = trufflepoints_2223 |>
     Species == "Geastrales sp. CS131" ~ "Geastrum sp. CS131",
     Species == "Geastrales sp. CS140" ~ "Geastrum sp. CS140",
     Species %in% c("Genea sp", "Genea harknessii", "Genea gardneri") ~ "Genea",
+    Species %in% c("Genea sp. CS201") ~ "Genea sp. CS79",
     Species == "Genear arenaria" ~ "Genea arenaria",
     Species %in% c("Glomerales", "Zygomyces") ~ "Glomeraceae",
     Species %in% c("Hydnotryopsis", "Hydnotryopsis cf. setchellii", "Hydnotryopsis setchellii") ~ "Sarcosphaera cf. setchellii",
@@ -172,6 +170,22 @@ species.list.habitat = trufflepoints |>
 table.lists.habitat = genera.list.habitat |>
   bind_rows(species.list.habitat)
 
+### Species specific habitats ----
+trufflepoints |>
+  filter(Genus == "Genea") |>
+  group_by(Habitat) |>
+  summarize(n = length(Species_updated))
+
+trufflepoints |>
+  filter(Genus == "Balsamia") |>
+  group_by(Habitat) |>
+  summarize(n = length(Species_updated))
+
+trufflepoints |>
+  filter(Genus == "Tuber") |>
+  group_by(Species_updated) |>
+  summarize(n = length(Species_updated))
+
 ## Season ----
 genera.list.season = trufflepoints |>
   select(Phylum, Order, Family, Genus, Season) |>
@@ -207,6 +221,12 @@ spp.list = trufflepoints |>
   arrange(Species_updated)
   write.csv("output/2024.10.25_SpeciesCounts.csv", row.names = FALSE)
 
+trufflepoints |>
+  filter(Species_updated != Genus) |>
+  select(Species_updated) |>
+  distinct() |>
+  arrange(Species_updated)
+
 genus.habitat.list = trufflepoints |>
   select(Genus, Habitat) |>
   distinct() |>
@@ -220,6 +240,91 @@ genus.habitat.list = trufflepoints |>
     TRUE ~ NA
   )) |>
   select(-c(Oak, Conifer, Mixed))
+
+genus.habitat.list.seasonal = trufflepoints |>
+  select(Genus, Habitat, Season) |>
+  distinct() |>
+  arrange(Genus) |>
+  mutate(n = 1) |>
+  pivot_wider(names_from = Habitat, values_from = n) |>
+  mutate(Habitat = case_when(
+    is.na(Oak) & Conifer == 1 ~ "Conifer",
+    is.na(Conifer) & Oak == 1 ~ "Oak",
+    Oak == 1 & Conifer == 1 ~ "Mixed",
+    is.na(Oak) & is.na(Conifer) & Mixed == 1 ~ "Mixed",
+    TRUE ~ NA
+  )) |>
+  select(-c(Oak, Conifer, Mixed))
+
+genus.season.list = trufflepoints |>
+  select(Genus, Season) |>
+  distinct() |>
+  arrange(Genus) |>
+  mutate(n = Season) |>
+  pivot_wider(names_from = Season, values_from = n, values_fill = " ") |>
+  mutate(season.colour = str_c(Autumn, Winter, Spring, Summer, sep = " "),
+         season.colour = str_trim(season.colour))
+
+genus.season.count = trufflepoints |>
+  select(Genus, Season) |>
+  distinct() |>
+  arrange(Genus) |>
+  mutate(n = 1) |>
+  pivot_wider(names_from = Season, values_from = n, values_fill = 0) |>
+  mutate(season.count = Autumn + Winter + Spring + Summer)
+
+table(genus.season.count$season.count)
+
+# Count season richness ----
+season.richness = trufflepoints |>
+  filter(Species_updated != Genus) |>
+  select(Species_updated, Season) |>
+  distinct() |>
+  mutate(n = 1) |>
+  pivot_wider(names_from = Season, values_from = n, values_fill = 0)
+
+sum(season.richness$Autumn)
+sum(season.richness$Winter)
+sum(season.richness$Spring)
+sum(season.richness$Summer)
+
+# Count foray productivity ----
+foray.productivity = trufflepoints |>
+  group_by(Site, Date) |>
+  summarize(n = length(Point))
+
+foray.richness = trufflepoints |>
+  select(Species_updated, Site, Date) |>
+  distinct() |>
+  group_by(Site, Date) |>
+  summarize(n = length(Species_updated))
+
+# Count site visits ----
+sites = trufflepoints |>
+  select(Site, Date) |>
+  distinct() |>
+  group_by(Site) |>
+  summarize(n = length(Date)) |>
+  arrange(desc(n))
+
+# write.csv(sites, "output/2024.11.22_SiteList.csv")
+
+trufflepoints |>
+  select(Date) |>
+  distinct()
+
+trufflepoints |>
+  select(Date, Season) |>
+  distinct() |>
+  group_by(Season) |>
+  summarize(n = length(Date))
+
+# Check how many CS species there are ----
+trufflepoints |>
+  filter(Species_updated != Genus) |>
+  select(Species_updated) |>
+  distinct() |>
+  filter(str_detect(Species_updated, "CS"))
 
 # Count overlap between oak and conifer ----
 habitat.overlap = trufflepoints |>
@@ -265,23 +370,26 @@ abundance = trufflecounts |>
   mutate(category = factor(category, levels = c("Abundant", "Common", "Uncommon", "Rare"))) |>
   filter(!Genus %in% c("Unknown")) |>
   left_join(genus.habitat.list) |>
-  # Add colour
-  mutate(label.colour = case_when(
-    Habitat == "Oak" ~ "#a63603",
-    Habitat == "Conifer" ~ "#006d2c",
-    Habitat == "Mixed" ~ "#4292c6"
-  ))
+  left_join(genus.season.count)
+  # # Add colour
+  # mutate(label.colour = case_when(
+  #   Habitat == "Oak" ~ "#a63603",
+  #   Habitat == "Conifer" ~ "#006d2c",
+  #   Habitat == "Mixed" ~ "#4292c6"
+  # ))
 
 # write.csv(abundance |> select(Genus) |> distinct(), "output/2024.10.05_Genera.csv")
 
-viz.abundance =
+# viz.abundance =
 ggplot(abundance, aes(x = reorder(Genus, -ct), y = ct, fill = Habitat)) +
   geom_bar(stat = "identity") +
   # geom_text(aes(label = ct), size = 5, vjust = -0.5) +
-  geom_label(aes(label = ct, fill = Habitat, alpha = 0.8), size = 5, vjust = -0.5) +
+  geom_label(aes(label = ct, fill = Habitat, alpha = 0.8),
+             size = 5, vjust = -0.5, label.padding = unit(0.05, "lines")) +
   scale_fill_manual(values = c("#006d2c", "#4292c6", "#a63603")) +
   # scale_fill_manual(values = c("#014636", "#02818a", "#67a9cf", "#d0d1e6"))+
   # labs(x = "", y = "Number of truffles found") +
+  ylim(0,260) +
   labs(x = "", y = "") +
   theme_bw() +
   # https://stackoverflow.com/questions/61956199/ggplot-color-axis-labels-based-on-variable
@@ -312,13 +420,7 @@ abundance.seasonal = trufflecounts.seasonal |>
   mutate(category = factor(category, levels = c("Abundant", "Common", "Uncommon", "Rare")),
          Season = factor(Season, levels = c("Spring", "Summer", "Autumn", "Winter"))) |>
   filter(!Genus %in% c("Unknown")) |>
-  left_join(genus.habitat.list) |>
-  # Add colour
-  mutate(label.colour = case_when(
-    Habitat == "Oak" ~ "#a63603",
-    Habitat == "Conifer" ~ "#006d2c",
-    Habitat == "Mixed" ~ "#4292c6"
-  ))
+  left_join(genus.habitat.list.seasonal)
 
 ## Visualise with all spp present ----
 ggplot(abundance.seasonal, aes(x = Genus, y = ct, fill = category)) +
@@ -335,12 +437,12 @@ ggplot(abundance.seasonal, aes(x = Genus, y = ct, fill = category)) +
 # ggsave("output/2024.09.28_TruffleFreq_seasonal_alphabetical.png", width = 19, height = 10, units = "in")
 
 ## Visualise with independent X ----
-plot.abundance = function(season){
+plot.abundance = function(season, background.color){
   ggplot(abundance.seasonal |> filter(Season == season),
          aes(x = reorder(Genus, -ct), y = ct, fill = Habitat)) +
     geom_bar(stat = "identity") +
     # geom_text(aes(label = ct), size = 5, vjust = -0.5) +
-    geom_label(aes(label = ct, fill = Habitat, alpha = 0.8), size = 5, vjust = -0.5) +
+    geom_label(aes(label = ct, fill = Habitat, alpha = 0.8), size = 5, vjust = -0.5, label.padding = unit(0.05, "lines")) +
     scale_fill_manual(values = c("#006d2c", "#4292c6", "#a63603")) +
     # scale_fill_manual(values = c("#014636", "#02818a", "#67a9cf", "#d0d1e6"))+
     ggh4x::facet_grid2(~Season, scale = "free_x", independent = "x") +
@@ -350,15 +452,16 @@ plot.abundance = function(season){
     theme(axis.text.x = element_text(angle=45,hjust = 1, face="bold"),
           text=element_text(size=20),
           panel.grid.minor = element_blank(),
-          legend.position = "none")
+          legend.position = "none",
+          strip.background = element_rect(fill=background.color))
 }
 
 library(patchwork)
 
-spring = plot.abundance("Spring")
-summer = plot.abundance("Summer")
-autumn = plot.abundance("Autumn")
-winter = plot.abundance("Winter")
+spring = plot.abundance("Spring", "#fefadc")
+summer = plot.abundance("Summer", "#fee1dc")
+autumn = plot.abundance("Autumn", "#f3e8fc")
+winter = plot.abundance("Winter", "#e8f9fc")
 
 (viz.abundance |
 (autumn + winter + spring + summer + plot_layout(ncol = 2, axes = "collect"))) +

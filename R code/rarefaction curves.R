@@ -30,7 +30,7 @@ library(iNEXT)
 #   # Turn binary
 #   replace(is.na(.), 0)
 
-truffle.coll = read.csv("output/2024.11.08_AllTrufflePoints.csv") |>
+truffle.coll = read.csv("output/2024.02.02_AllTrufflePoints.csv") |>
   filter(Species_updated != Genus) |>
   mutate(tripDay = rank(as_date(Date)),
          species = Species_updated) |>
@@ -58,7 +58,7 @@ ggiNEXT(rare.inext, type = 1)+
         panel.border = element_rect(colour = "black", fill=NA))
 
 # ggsave("output/2024.06.05_CSNMtruffleDiversity.png", width = 8, height = 6, units = "in")
-ggsave("output/2024.11.08_CSNMtruffleDiversity.png", width = 8, height = 6, units = "in")
+ggsave("output/2024.02.01_CSNMtruffleDiversity.png", width = 8, height = 6, units = "in")
 
 #Sample coverage
 ggiNEXT(rare.inext, type = 2)+
@@ -71,4 +71,4 @@ ggiNEXT(rare.inext, type = 2)+
         panel.border = element_rect(colour = "black", fill=NA))
 
 # ggsave("output/2024.06.05_CSNMsampleCoverage.png", width = 8, height = 6, units = "in")
-ggsave("output/2024.11.08_CSNMsampleCoverage.png", width = 8, height = 6, units = "in")
+ggsave("output/2024.02.01_CSNMsampleCoverage.png", width = 8, height = 6, units = "in")

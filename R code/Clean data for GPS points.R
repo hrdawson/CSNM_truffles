@@ -57,7 +57,8 @@ mar24 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points March 
 
 may24 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points May 2024.csv", na.strings=c("","NA")) |>
   bind_rows(read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points May 2024 Wk2.csv",
-                     na.strings=c("","NA"))) |>
+                     na.strings=c("","NA")) |>
+              mutate(Specimen = readr::parse_number(Point))) |>
   rename(Molecular.species = Species) |>
   mutate(Species = case_when(
     Point == "Pogie" & Date == "2024-05-26" ~ "Unknown",
@@ -71,15 +72,15 @@ jul24 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points July 2
          Season = "Summer",
          Date = "2024-07-26",
          Species = coalesce(Species, field.guess),
-         Specimen = as.numeric(str_extract(Specimen, '[:digit:]')))
-
+         Specimen = readr::parse_number(Specimen)
+         )
 
 # Bind them together
 truffles = jan24 |>
   bind_rows(jun23, nov23, oct23.1, oct23.2, mar24) |>
   mutate(Point = as.character(Point)) |>
   bind_rows(sep23, may24, jul24) |>
-  select(Point, Species, Date, Site, Season, Habitat) |>
+  select(Point, Species, Date, Site, Season, Habitat, Specimen) |>
   # The GPS has changed how points are labeled
   mutate(Point = paste0("0", Point)) |>
   separate(Species, into = "Genus", remove = FALSE) |>

@@ -4,7 +4,7 @@ library(stringr)
 
 trufflepoints_2324 = read.csv("clean_data/CSNM_GPSpoints_2023-24.csv") |>
   mutate(Date = lubridate::ymd(Date)) |>
-  select(Species, Genus, Point, Date, Site, Season, Habitat)
+  select(Species, Genus, Point, Date, Site, Season, Habitat, Specimen)
 
 trufflepoints_2223 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points Oct '22.csv") |>
   mutate(Season = "Autumn") |>
@@ -12,6 +12,7 @@ trufflepoints_2223 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS 
               mutate(Season = "Winter"),
             read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS points May '23.csv") |>
               mutate(Season = "Spring")) |>
+  mutate(Specimen = readr::parse_number(original.ID)) |>
   # Add species
   rename(field.guess = species) |>
   mutate(species = case_when(
@@ -47,27 +48,82 @@ trufflepoints_2223 = read.csv("raw_data/2023-24_GPSdata/CSNM Species list - GPS 
     TRUE ~ field.guess
   )) |>
   relocate(species, .after = field.guess) |>
-  select(waypoint, species, Season, Site, Date, Habitat) |>
+  select(waypoint, species, Season, Site, Date, Habitat, Specimen) |>
   separate(species, into = "Genus", remove = FALSE) |>
   mutate(across(c(species, Genus), ~na_if(., ""))) |>
   drop_na(Genus) |>
   rename(Species = species, Point = waypoint) |>
-  mutate(Point = as.character(Point))
+  mutate(Point = as.character(Point)) |>
+  mutate(Date = lubridate::ymd(Date))
 
-trufflepoints = trufflepoints_2223 |>
+# Pull in GenBank numbers
+genbank_its_pacbio = readxl::read_excel("raw_data/CSNMGenBankUploadsWithAccession#s.xlsx",
+                                        sheet = "PacBio") |>
+  select('GenBank Accession #', 'specimen-voucher', Organism) |>
+  separate(Organism, into = "Genus_GB", remove = FALSE) |>
+  separate('specimen-voucher', into = c("X1", "X2", "X3"), sep = " ") |>
+  mutate(Specimen = readr::parse_number(X1),
+         iNaturalist_Nr_GB = readr::parse_number(X3)) |>
+  rename(GenBank_Nr_ITS = 'GenBank Accession #') |>
+  select(-c(X1, X2, X3)) |>
+  mutate(DNA_method = "PacBio")
+
+genbank_its_sanger = readxl::read_excel("raw_data/CSNMGenBankUploadsWithAccession#s.xlsx",
+                                        sheet = "Sanger") |>
+  select('Genbank Accession #', 'specimen-voucher', Organism) |>
+  separate(Organism, into = "Genus_GB", remove = FALSE) |>
+  separate('specimen-voucher', into = c("X1", "X2", "X3"), sep = " ") |>
+  mutate(Specimen = readr::parse_number(X1),
+         iNaturalist_Nr_GB = readr::parse_number(X3)) |>
+  rename(GenBank_Nr_ITS = 'Genbank Accession #') |>
+  select(-c(X1, X2, X3)) |>
+  mutate(DNA_method = "Sanger")
+
+genbank_its = bind_rows(genbank_its_sanger, genbank_its_pacbio) |>
+  # Remove GenBank parasites
+  filter(!GenBank_Nr_ITS %in% c("PQ409100", "PQ409066", "PQ409103"))
+
+# Pull in iNat numbers
+inat = read.csv("raw_data/observations-518161.csv", na.strings = c("", " ", "NA")) |>
+  select(id, url, field.id.., field.voucher.number.s.) |>
+  mutate(field.id.. = as.character(field.id..),
+    X1 = coalesce(field.id.., field.voucher.number.s.),
+    Specimen = readr::parse_number(X1)) |>
+  rename(iNaturalist_Nr = id, iNaturalist_URL = url) |>
+  select(Specimen, iNaturalist_Nr, iNaturalist_URL) |>
+  # Remove obs not linked to specific specimens
+  drop_na(Specimen)
+
+trufflepoints = read.csv("raw_data/CSNM_Truffles_Missing_GPS_Data.csv") |>
   mutate(Date = lubridate::ymd(Date)) |>
   bind_rows(trufflepoints_2324) |>
+  bind_rows(trufflepoints_2223) |>
   filter(Genus != "Tomst") |>
   filter(Genus != "") |>
   mutate(
+    # Update site names
     Site = case_when(
       Site == "Mixed oak-conifer" ~ "Site 1",
       Site == "PCT Pilot" ~ "PCT Pilot Rock",
       Site == "Tyler Rd" ~ "Taylor Rd",
+      Site == "Emigrant Trail" ~ "Buck Rock",
+      Site == "Keno Access Rd" ~ "Surveyor Lower",
+      Site == "Surveyor Campground" & Date == "2024-05-27" ~ "Surveyor Peak",
+      Site == "Surveyor Peak" & Date == "2024-05-27" ~ "Surveyor",
       TRUE ~ Site
     ),
+    # Remove collection numbers that were never actually collected
+    Specimen = case_when(
+      Specimen %in% c(48, 85, 177) ~ NA,
+      Genus == "Balsamia" & Specimen == 1 ~ 41,
+      Point == "06511" ~ 167,
+      Species == "Geopora sp. CS218" ~ 218,
+      Point == "0560" ~ 65,
+      TRUE ~ Specimen
+    ),
+    # Update taxonomy
     Genus = case_when(
-    Genus == "Endogonaceae" ~ "Endogone",
+    Genus == "Endogone" ~ "Endogonaceae",
     Genus == "Zygomyces" ~ "Glomeraceae",
     Genus == "Glomerales" ~ "Glomeraceae",
     Genus == "Gymnomyces" ~ "Russula",
@@ -99,7 +155,7 @@ trufflepoints = trufflepoints_2223 |>
     Genus == "Coniophora" ~ "Coniphora sp. CS143",
     Genus == "Cortinarius" ~ "Cortinarius pinguis",
     Species == "Elaphomyces sp" ~ "Elaphomyces",
-    Species == "Endogonaceae sp. CS155" ~ "Endogone sp. CS155",
+    Species == "Endogonaceae sp. CS155" ~ "Jimgerdemannia sp. CS155",
     Species == "Gautieria sp" ~ "Gautieria",
     Species == "Gautieria cf. pterosperma" ~ "Gautieria sp. CS53",
     Species == "Geastrales sp. CS131" ~ "Geastrum sp. CS131",
@@ -108,7 +164,7 @@ trufflepoints = trufflepoints_2223 |>
     Species %in% c("Genea sp. CS201") ~ "Genea sp. CS79",
     Species == "Genear arenaria" ~ "Genea arenaria",
     Species %in% c("Glomerales", "Zygomyces") ~ "Glomeraceae",
-    Species %in% c("Hydnotryopsis", "Hydnotryopsis cf. setchellii", "Hydnotryopsis setchellii") ~ "Sarcosphaera cf. setchellii",
+    Species %in% c("Hydnotryopsis", "Hydnotryopsis cf. setchellii", "Hydnotryopsis setchellii") ~ "Sarcosphaera setchellii",
     Species == "Hydnotryopsis sp. CS252" ~ "Sarcosphaera sp. CS252",
     Species == "Hysterangium sp" ~ "Hysterangium",
     Species %in% c("Hysterangium sp. CS75", "Hysterangium sp. CS134") ~ "Hysterangium sp. CS38",
@@ -121,7 +177,7 @@ trufflepoints = trufflepoints_2223 |>
     Species %in% c("Leucogaster cf. rubescens", "Leucogaster sp. CS89") ~ "Leucogaster rubescens",
     Species == "Albatrellaceae sp. CS113" ~ "Leucophleps sp. CS113",
     Genus == "Lepiota" ~ "Lepiota viridigleba",
-    Species %in% c("Melanogaster cf. ambiguus", "Melanogaster euryspermus") ~ "Melanogaster cf. euryspermus",
+    Species %in% c("Melanogaster cf. ambiguus", "Melanogaster euryspermus", "Melanogaster cf. euryspermus") ~ "Melanogaster sp. 'euryspermus'",
     Genus == "Paraglactinia" | Species == "Paragalactinia" ~ "Paragalactinia infossa",
     Genus == "Phallogaster" ~ "Phallogaster phillipsii",
     Genus == "Phlegmacium" ~ "Phlegmacium sublilacinum",
@@ -129,21 +185,63 @@ trufflepoints = trufflepoints_2223 |>
     Species %in% c("Gymnomyces sp", "Gymnomyces") ~ "Russula",
     Genus == "Schenella" | Species == "Schenella" ~ "Schenella pityophila",
     Genus == "Sedecula" ~ "Seducula pulvinata",
+    Genus == "Scleroderma" ~ "Scleroderma sp. CS210",
     Genus == "Trappea" ~ "Trappea sp. CS127",
     Species == "Tuber sp" ~ "Tuber",
     Species == "Tuber anniae" ~ "Tuber aff. anniae",
     Species == "Tuber cf. candidum" ~ "Tuber candidum",
     Species == "Tuber cf. whetstonense" ~ "Tuber whetstonense",
     Species == "Phylum unknown" ~ "Unknown",
-    Genus == "Xerocomellus" ~ "Xerocomellus sp. CS129",
+    Genus == "Xerocomellus" ~ "Xerocomellus cf. macmurphyi",
     TRUE ~ Species
   ),
   Species_updated = trimws(Species_updated)
   ) |>
   # Add in taxonomy
-  left_join(read.csv("raw_data/2024.11.08_Genera.csv") |> rename(Genus = Taxon))
+  left_join(read.csv("raw_data/2024.11.08_Genera.csv") |> rename(Genus = Taxon)) |>
+  # Add iNat IDs
+  full_join(inat) |>
+  # Add in GenBank info
+  full_join(genbank_its) |>
+  # Remove point that isn't a truffle
+  filter(Species != "Lactarius crassus")
 
-# write.csv(trufflepoints, "output/2024.11.08_AllTrufflePoints.csv")
+write.csv(trufflepoints |> select(-c(lat, lon, Point, Species_original, Notes)) |> arrange(Date),
+          "output/2024.02.02_AllTrufflePoints.csv", row.names = FALSE)
+
+write.csv(trufflepoints |> drop_na(iNaturalist_Nr) |>
+            select(Specimen, Species_updated, iNaturalist_Nr, iNaturalist_URL, GenBank_Nr_ITS, DNA_method) |>
+            arrange(Specimen),
+          "output/2024.02.09_TrufflePoints_iNat.csv", row.names = FALSE)
+
+# Missing CS numbers
+cs.missing = trufflepoints |>
+  drop_na(GenBank_Nr_ITS) |>
+  filter(is.na(Genus))
+
+# Missing iNat numbers
+inat.missing = trufflepoints |>
+  drop_na(Specimen) |>
+  filter(is.na(iNaturalist_Nr)) |>
+  arrange(Specimen)
+
+#iNat numbers without points
+inat.only = trufflepoints |>
+  drop_na(Specimen) |>
+  filter(is.na(Family)) |>
+  arrange(Specimen)
+
+#iNat cross check
+inat.verify = trufflepoints |>
+  filter(iNaturalist_Nr != iNaturalist_Nr_GB) |>
+  relocate(GenBank_Nr_ITS, iNaturalist_Nr, iNaturalist_Nr_GB)
+
+# write.csv(inat.verify, "output/2025.01.11_Genbank_Wrong_iNat.csv")
+
+# Check that Genbank IDs match
+id.verify = trufflepoints |>
+  filter(Genus != Genus_GB) |>
+  relocate(Species, Organism)
 
 # Make lists of genera and species -----
 ## Habitat ----
@@ -212,14 +310,16 @@ table.lists.season = genera.list.season |>
 table.lists = table.lists.habitat |>
   left_join(table.lists.season) |>
   relocate(Phylum, Order, Family, .after = last_col()) |>
-  write.csv("output/2024.11.08_Table1.csv", row.names = FALSE)
+  arrange(Phylum, Order, Family, Taxon) |>
+  filter(Taxon != "Unknown")
+  write.csv("output/2024.02.02_Table1.csv", row.names = FALSE)
 
 spp.list = trufflepoints |>
   group_by(Genus, Species_updated, Season) |>
   summarize(n = length(Species_updated)) |>
   pivot_wider(names_from = Season, values_from = n, values_fill = 0) |>
   arrange(Species_updated)
-  write.csv("output/2024.10.25_SpeciesCounts.csv", row.names = FALSE)
+  # write.csv("output/2024.10.25_SpeciesCounts.csv", row.names = FALSE)
 
 trufflepoints |>
   filter(Species_updated != Genus) |>
@@ -236,7 +336,7 @@ genus.habitat.list = trufflepoints |>
   mutate(Habitat = case_when(
     is.na(Oak) & Conifer == 1 ~ "Conifer",
     is.na(Conifer) & Oak == 1 ~ "Oak",
-    Oak == 1 & Conifer == 1 ~ "Mixed",
+    Oak == 1 & Conifer == 1 ~ "Both",
     TRUE ~ NA
   )) |>
   select(-c(Oak, Conifer, Mixed))
@@ -250,8 +350,8 @@ genus.habitat.list.seasonal = trufflepoints |>
   mutate(Habitat = case_when(
     is.na(Oak) & Conifer == 1 ~ "Conifer",
     is.na(Conifer) & Oak == 1 ~ "Oak",
-    Oak == 1 & Conifer == 1 ~ "Mixed",
-    is.na(Oak) & is.na(Conifer) & Mixed == 1 ~ "Mixed",
+    Oak == 1 & Conifer == 1 ~ "Both",
+    is.na(Oak) & is.na(Conifer) & Mixed == 1 ~ "Both",
     TRUE ~ NA
   )) |>
   select(-c(Oak, Conifer, Mixed))
@@ -276,17 +376,32 @@ genus.season.count = trufflepoints |>
 table(genus.season.count$season.count)
 
 # Count season richness ----
-season.richness = trufflepoints |>
+season.richness.species = trufflepoints |>
   filter(Species_updated != Genus) |>
-  select(Species_updated, Season) |>
+  select(Genus, Species_updated, Season) |>
+  distinct()
+
+season.richness.genus.only = trufflepoints |>
+  filter(Species_updated == Genus) |>
+  select(Genus, Season) |>
   distinct() |>
+  anti_join(season.richness.species)
+
+season.richness = bind_rows(season.richness.species, season.richness.genus.only) |>
+  mutate(Species_updated = coalesce(Species_updated, Genus)) |>
   mutate(n = 1) |>
-  pivot_wider(names_from = Season, values_from = n, values_fill = 0)
+  pivot_wider(names_from = Season, values_from = n, values_fill = 0) |>
+  filter(Species_updated != "Unknown")
 
 sum(season.richness$Autumn)
 sum(season.richness$Winter)
 sum(season.richness$Spring)
 sum(season.richness$Summer)
+
+# Species abundance ----
+trufflepoints |>
+  group_by(Season) |>
+  summarize(n = length(Species_updated))
 
 # Count foray productivity ----
 foray.productivity = trufflepoints |>
@@ -307,7 +422,23 @@ sites = trufflepoints |>
   summarize(n = length(Date)) |>
   arrange(desc(n))
 
-# write.csv(sites, "output/2024.11.22_SiteList.csv")
+sites.season = trufflepoints |>
+  select(Site, Season, Date) |>
+  distinct() |>
+  group_by(Site, Season) |>
+  summarize(n = length(Date)) |>
+  mutate(n = as.character(n)) |>
+  pivot_wider(names_from = Season, values_from = n, values_fill = '--')
+
+site.list = trufflepoints |>
+  select(Site, Habitat) |>
+  distinct() |>
+  mutate(X1 = "X") |>
+  pivot_wider(names_from = Habitat, values_from = X1, values_fill = '--') |>
+  left_join(sites.season) |>
+  arrange(Site)
+
+# write.csv(site.list, "output/2025.02.09_SiteList.csv", row.names = FALSE)
 
 trufflepoints |>
   select(Date) |>
@@ -325,6 +456,36 @@ trufflepoints |>
   select(Species_updated) |>
   distinct() |>
   filter(str_detect(Species_updated, "CS"))
+
+# Count species ----
+trufflepoints |>
+  filter(Species_updated != Genus) |>
+  select(Species_updated) |>
+  distinct()
+
+trufflepoints |>
+  filter(Species_updated != Genus) |>
+  select(Genus) |>
+  distinct()
+
+trufflepoints |>
+  filter(Species_updated != Genus) |>
+  select(Family) |>
+  distinct()
+
+trufflepoints |>
+  filter(Species_updated != Genus) |>
+  select(Order) |>
+  distinct()
+
+trufflepoints |>
+  filter(Species_updated != Genus) |>
+  select(Phylum) |>
+  distinct()
+
+# Count sporocarps collected ----
+sporocarps = trufflepoints |>
+  drop_na(Specimen)
 
 # Count overlap between oak and conifer ----
 habitat.overlap = trufflepoints |>
@@ -370,7 +531,8 @@ abundance = trufflecounts |>
   mutate(category = factor(category, levels = c("Abundant", "Common", "Uncommon", "Rare"))) |>
   filter(!Genus %in% c("Unknown")) |>
   left_join(genus.habitat.list) |>
-  left_join(genus.season.count)
+  left_join(genus.season.count) |>
+  mutate(Habitat = factor(Habitat, levels = c("Conifer", "Oak", "Both")))
   # # Add colour
   # mutate(label.colour = case_when(
   #   Habitat == "Oak" ~ "#a63603",
@@ -380,13 +542,14 @@ abundance = trufflecounts |>
 
 # write.csv(abundance |> select(Genus) |> distinct(), "output/2024.10.05_Genera.csv")
 
-# viz.abundance =
+viz.abundance =
 ggplot(abundance, aes(x = reorder(Genus, -ct), y = ct, fill = Habitat)) +
   geom_bar(stat = "identity") +
   # geom_text(aes(label = ct), size = 5, vjust = -0.5) +
   geom_label(aes(label = ct, fill = Habitat, alpha = 0.8),
              size = 5, vjust = -0.5, label.padding = unit(0.05, "lines")) +
-  scale_fill_manual(values = c("#006d2c", "#4292c6", "#a63603")) +
+  scale_fill_manual(values = c("#006d2c", "#a63603", "#4292c6")) +
+  # scale_fill_manual(values = c("#006d2c","#f4e53f", "#a63603")) +
   # scale_fill_manual(values = c("#014636", "#02818a", "#67a9cf", "#d0d1e6"))+
   # labs(x = "", y = "Number of truffles found") +
   ylim(0,260) +
@@ -396,10 +559,12 @@ ggplot(abundance, aes(x = reorder(Genus, -ct), y = ct, fill = Habitat)) +
   theme(axis.text.x = element_text(angle=45,hjust = 1, face="bold"),
         text=element_text(size=20),
         panel.grid.minor = element_blank(),
-        legend.position = "none")
+        # legend.position = "none",
+        )
 
 # ggsave("presentation/2024.06.05_TruffleFreq.png", width = 19, height = 10, units = "in")
 # ggsave("output/2024.09.28_TruffleFreq.png", width = 19, height = 10, units = "in")
+ggsave("output/2024.02.01_TruffleFreq.svg", width = 12, height = 8, units = "in")
 
 # Seasonal abundance ----
 trufflecounts.seasonal = trufflepoints |>
@@ -420,7 +585,8 @@ abundance.seasonal = trufflecounts.seasonal |>
   mutate(category = factor(category, levels = c("Abundant", "Common", "Uncommon", "Rare")),
          Season = factor(Season, levels = c("Spring", "Summer", "Autumn", "Winter"))) |>
   filter(!Genus %in% c("Unknown")) |>
-  left_join(genus.habitat.list.seasonal)
+  left_join(genus.habitat.list.seasonal) |>
+  mutate(Habitat = factor(Habitat, levels = c("Conifer", "Oak", "Both")))
 
 ## Visualise with all spp present ----
 ggplot(abundance.seasonal, aes(x = Genus, y = ct, fill = category)) +
@@ -443,7 +609,7 @@ plot.abundance = function(season, background.color){
     geom_bar(stat = "identity") +
     # geom_text(aes(label = ct), size = 5, vjust = -0.5) +
     geom_label(aes(label = ct, fill = Habitat, alpha = 0.8), size = 5, vjust = -0.5, label.padding = unit(0.05, "lines")) +
-    scale_fill_manual(values = c("#006d2c", "#4292c6", "#a63603")) +
+    scale_fill_manual(values = c("#006d2c", "#a63603", "#4292c6")) +
     # scale_fill_manual(values = c("#014636", "#02818a", "#67a9cf", "#d0d1e6"))+
     ggh4x::facet_grid2(~Season, scale = "free_x", independent = "x") +
     ylim(0,175) +
@@ -469,7 +635,7 @@ plot_layout(nrow = 2, heights = c(1, 3), axes = "collect")
 
 # ggsave("output/2024.10.04_TruffleFreq_seasonal_freeX.png", width = 19, height = 10, units = "in")
 # ggsave("output/2024.10.05_TruffleFreq_seasonal_freeX.png", width = 19, height = 10, units = "in")
-ggsave("output/2024.11.08_TruffleFreq_all.png", width = 15, height = 15, units = "in")
+ggsave("output/2024.02.01_TruffleFreq_all.svg", width = 15, height = 15, units = "in")
 
 ## Stacked ----
 ggplot(abundance.seasonal, aes(x = Genus, y = ct, fill = category)) +

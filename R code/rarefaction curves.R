@@ -30,7 +30,7 @@ library(iNEXT)
 #   # Turn binary
 #   replace(is.na(.), 0)
 
-truffle.coll = read.csv("output/2024.02.02_AllTrufflePoints.csv") |>
+truffle.coll = read.csv("output/2025-03-20_AllTrufflePoints.csv") |>
   filter(Species_updated != Genus) |>
   mutate(tripDay = rank(as_date(Date)),
          species = Species_updated) |>
@@ -60,6 +60,9 @@ ggiNEXT(rare.inext, type = 1)+
 # ggsave("output/2024.06.05_CSNMtruffleDiversity.png", width = 8, height = 6, units = "in")
 ggsave("output/2024.02.01_CSNMtruffleDiversity.png", width = 8, height = 6, units = "in")
 
+#https://cran.r-project.org/web/packages/iNEXT/vignettes/Introduction.pdf
+estimateD(truffle.coll, datatype = "incidence_raw")
+
 #Sample coverage
 ggiNEXT(rare.inext, type = 2)+
   # scale_color_manual(values = c("goldenrod", "olivedrab4", "dodgerblue4"))+
@@ -72,3 +75,5 @@ ggiNEXT(rare.inext, type = 2)+
 
 # ggsave("output/2024.06.05_CSNMsampleCoverage.png", width = 8, height = 6, units = "in")
 ggsave("output/2024.02.01_CSNMsampleCoverage.png", width = 8, height = 6, units = "in")
+
+estimateD(truffle.coll, datatype = "incidence_raw", base = "coverage")

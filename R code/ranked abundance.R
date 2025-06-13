@@ -1,6 +1,7 @@
 library(tidyverse)
 library(lubridate)
 library(stringr)
+library(tidylog)
 
 trufflepoints_2324 = read.csv("clean_data/CSNM_GPSpoints_2023-24.csv") |>
   mutate(Date = lubridate::ymd(Date)) |>
@@ -177,7 +178,7 @@ trufflepoints = read.csv("raw_data/CSNM_Truffles_Missing_GPS_Data.csv") |>
     Species %in% c("Leucogaster cf. rubescens", "Leucogaster sp. CS89") ~ "Leucogaster rubescens",
     Species == "Albatrellaceae sp. CS113" ~ "Leucophleps sp. CS113",
     Genus == "Lepiota" ~ "Lepiota viridigleba",
-    Species %in% c("Melanogaster cf. ambiguus", "Melanogaster euryspermus", "Melanogaster cf. euryspermus") ~ "Melanogaster sp. 'euryspermus'",
+    Species %in% c("Melanogaster cf. ambiguus", "Melanogaster euryspermus", "Melanogaster cf. euryspermus") ~ "Melanogaster euryspermus",
     Genus == "Paraglactinia" | Species == "Paragalactinia" ~ "Paragalactinia infossa",
     Genus == "Phallogaster" ~ "Phallogaster phillipsii",
     Genus == "Phlegmacium" ~ "Phlegmacium sublilacinum",
@@ -207,12 +208,12 @@ trufflepoints = read.csv("raw_data/CSNM_Truffles_Missing_GPS_Data.csv") |>
   filter(Species != "Lactarius crassus")
 
 write.csv(trufflepoints |> select(-c(lat, lon, Point, Species_original, Notes)) |> arrange(Date),
-          "output/2024.02.02_AllTrufflePoints.csv", row.names = FALSE)
+          paste0("output/", Sys.Date(), "_AllTrufflePoints.csv"), row.names = FALSE)
 
-write.csv(trufflepoints |> drop_na(iNaturalist_Nr) |>
-            select(Specimen, Species_updated, iNaturalist_Nr, iNaturalist_URL, GenBank_Nr_ITS, DNA_method) |>
-            arrange(Specimen),
-          "output/2024.02.09_TrufflePoints_iNat.csv", row.names = FALSE)
+# write.csv(trufflepoints |> drop_na(iNaturalist_Nr) |>
+#             select(Specimen, Species_updated, iNaturalist_Nr, iNaturalist_URL, GenBank_Nr_ITS, DNA_method) |>
+#             arrange(Specimen),
+#           "output/2024.02.09_TrufflePoints_iNat.csv", row.names = FALSE)
 
 # Missing CS numbers
 cs.missing = trufflepoints |>
@@ -516,23 +517,29 @@ table(habitat.overlap$Both)
 # Calculate abundance ----
 
 trufflecounts = trufflepoints |>
-  group_by(Genus) |>
+  group_by(Phylum, Genus, Habitat) |>
   summarize(n = length(Point))
+
+truffletotals = trufflepoints |>
+  group_by(Genus) |>
+  summarize(n.total = length(Point))
 
 abundance = trufflecounts |>
   rename(ct = n) |>
   arrange(ct) |>
-  mutate(category = case_when(
-    ct >= 100 ~ "Abundant",
-    ct < 100 & ct > 30 ~ "Common",
-    ct <= 30 & ct >= 10 ~ "Uncommon",
-    ct < 10 ~ "Rare"
-  )) |>
-  mutate(category = factor(category, levels = c("Abundant", "Common", "Uncommon", "Rare"))) |>
+  # mutate(category = case_when(
+  #   ct >= 100 ~ "Abundant",
+  #   ct < 100 & ct > 30 ~ "Common",
+  #   ct <= 30 & ct >= 10 ~ "Uncommon",
+  #   ct < 10 ~ "Rare"
+  # )) |>
+  # mutate(category = factor(category, levels = c("Abundant", "Common", "Uncommon", "Rare"))) |>
   filter(!Genus %in% c("Unknown")) |>
-  left_join(genus.habitat.list) |>
-  left_join(genus.season.count) |>
-  mutate(Habitat = factor(Habitat, levels = c("Conifer", "Oak", "Both")))
+  # left_join(genus.habitat.list) |>
+  # left_join(genus.season.count) |>
+  mutate(Habitat = factor(Habitat, levels = c("Conifer", "Oak", "Mixed"))) |>
+  # Add total counts
+  left_join(truffletotals)
   # # Add colour
   # mutate(label.colour = case_when(
   #   Habitat == "Oak" ~ "#a63603",
@@ -543,17 +550,19 @@ abundance = trufflecounts |>
 # write.csv(abundance |> select(Genus) |> distinct(), "output/2024.10.05_Genera.csv")
 
 viz.abundance =
-ggplot(abundance, aes(x = reorder(Genus, -ct), y = ct, fill = Habitat)) +
-  geom_bar(stat = "identity") +
+ggplot(abundance, aes(x = reorder(Genus, -n.total), y = ct, fill = Habitat)) +
+  geom_bar(position="stack", stat="identity") +
   # geom_text(aes(label = ct), size = 5, vjust = -0.5) +
   geom_label(aes(label = ct, fill = Habitat, alpha = 0.8),
              size = 5, vjust = -0.5, label.padding = unit(0.05, "lines")) +
-  scale_fill_manual(values = c("#006d2c", "#a63603", "#4292c6")) +
+  # scale_fill_manual(values = c("#006d2c", "#a63603", "#4292c6")) + # Manuscript
+  scale_fill_manual(values = c("#006d2c", "#a63603", "#4292c6")) + # MSA2025
   # scale_fill_manual(values = c("#006d2c","#f4e53f", "#a63603")) +
   # scale_fill_manual(values = c("#014636", "#02818a", "#67a9cf", "#d0d1e6"))+
   # labs(x = "", y = "Number of truffles found") +
   ylim(0,260) +
-  labs(x = "", y = "") +
+  # scale_y_log10() +
+  labs(x = "", y = "Total truffles collected") +
   theme_bw() +
   # https://stackoverflow.com/questions/61956199/ggplot-color-axis-labels-based-on-variable
   theme(axis.text.x = element_text(angle=45,hjust = 1, face="bold"),
@@ -564,12 +573,69 @@ ggplot(abundance, aes(x = reorder(Genus, -ct), y = ct, fill = Habitat)) +
 
 # ggsave("presentation/2024.06.05_TruffleFreq.png", width = 19, height = 10, units = "in")
 # ggsave("output/2024.09.28_TruffleFreq.png", width = 19, height = 10, units = "in")
-ggsave("output/2024.02.01_TruffleFreq.svg", width = 12, height = 8, units = "in")
+ggsave(paste0("output/", Sys.Date(), "_TruffleFreq.svg"), width = 12, height = 8, units = "in")
+
+viz.abundance.asco =
+  ggplot(abundance |> filter(Phylum %in% c("Ascomycota")),
+         aes(x = reorder(Genus, -n.total), y = ct, fill = Habitat)) +
+  geom_bar(position="stack", stat="identity") +
+  # geom_text(aes(label = ct), size = 5, vjust = -0.5) +
+  geom_label(aes(label = ct, fill = Habitat, alpha = 0.8),
+             size = 5, vjust = -0.5, label.padding = unit(0.05, "lines")) +
+  # scale_fill_manual(values = c("#006d2c", "#a63603", "#4292c6")) + # Manuscript
+  scale_fill_manual(values = c("#65881E","#9C413A", "#D7BE98")) + # MSA2025
+  # scale_fill_manual(values = c("#006d2c","#f4e53f", "#a63603")) +
+  # scale_fill_manual(values = c("#014636", "#02818a", "#67a9cf", "#d0d1e6"))+
+  labs(x = "", y = "Number of truffles found") +
+  ylim(0,260) +
+  facet_grid(~Phylum, scale = "free_x") +
+  # scale_y_log10() +
+  # labs(x = "", y = "Total truffles collected") +
+  theme_bw() +
+  # https://stackoverflow.com/questions/61956199/ggplot-color-axis-labels-based-on-variable
+  theme(axis.text.x = element_text(angle=45,hjust = 1, face="bold"),
+        text=element_text(size=20),
+        panel.grid.minor = element_blank(),
+        # legend.position = "none",
+  )
+
+viz.abundance.basidio =
+  ggplot(abundance |> filter(Phylum %in% c("Basidiomycota")),
+         aes(x = reorder(Genus, -n.total), y = ct, fill = Habitat)) +
+  geom_bar(position="stack", stat="identity") +
+  # geom_text(aes(label = ct), size = 5, vjust = -0.5) +
+  geom_label(aes(label = ct, fill = Habitat, alpha = 0.8),
+             size = 5, vjust = -0.5, label.padding = unit(0.05, "lines")) +
+  # scale_fill_manual(values = c("#006d2c", "#a63603", "#4292c6")) + # Manuscript
+  scale_fill_manual(values = c("#65881E","#9C413A", "#D7BE98")) + # MSA2025
+  # scale_fill_manual(values = c("#006d2c","#f4e53f", "#a63603")) +
+  # scale_fill_manual(values = c("#014636", "#02818a", "#67a9cf", "#d0d1e6"))+
+  labs(x = "", y = "Number of truffles found") +
+  ylim(0,260) +
+  facet_grid(~Phylum, scale = "free_x") +
+  # scale_y_log10() +
+  # labs(x = "", y = "Total truffles collected") +
+  theme_bw() +
+  # https://stackoverflow.com/questions/61956199/ggplot-color-axis-labels-based-on-variable
+  theme(axis.text.x = element_text(angle=45,hjust = 1, face="bold"),
+        text=element_text(size=20),
+        panel.grid.minor = element_blank(),
+        # legend.position = "none",
+  )
+
+library(patchwork)
+
+viz.abundance.asco + viz.abundance.basidio +
+  plot_layout(widths = c(1, 2)) +
+  plot_layout(axes = "collect") +
+  plot_layout(guides = "collect")
+
+ggsave(paste0("output/", Sys.Date(), "_TruffleFreq_Phylum.svg"), width = 12, height = 8, units = "in")
 
 # Seasonal abundance ----
 trufflecounts.seasonal = trufflepoints |>
   filter(Genus != "Zygomyces") |>
-  group_by(Season, Genus) |>
+  group_by(Season, Genus, Habitat) |>
   summarize(n = length(Point))
 
 abundance.seasonal = trufflecounts.seasonal |>
@@ -584,9 +650,9 @@ abundance.seasonal = trufflecounts.seasonal |>
   # )) |>
   mutate(category = factor(category, levels = c("Abundant", "Common", "Uncommon", "Rare")),
          Season = factor(Season, levels = c("Spring", "Summer", "Autumn", "Winter"))) |>
-  filter(!Genus %in% c("Unknown")) |>
-  left_join(genus.habitat.list.seasonal) |>
-  mutate(Habitat = factor(Habitat, levels = c("Conifer", "Oak", "Both")))
+  filter(!Genus %in% c("Unknown"))
+  # left_join(genus.habitat.list.seasonal) |>
+  # mutate(Habitat = factor(Habitat, levels = c("Conifer", "Oak", "Both")))
 
 ## Visualise with all spp present ----
 ggplot(abundance.seasonal, aes(x = Genus, y = ct, fill = category)) +
@@ -606,7 +672,7 @@ ggplot(abundance.seasonal, aes(x = Genus, y = ct, fill = category)) +
 plot.abundance = function(season, background.color){
   ggplot(abundance.seasonal |> filter(Season == season),
          aes(x = reorder(Genus, -ct), y = ct, fill = Habitat)) +
-    geom_bar(stat = "identity") +
+    geom_bar(position="stack", stat="identity") +
     # geom_text(aes(label = ct), size = 5, vjust = -0.5) +
     geom_label(aes(label = ct, fill = Habitat, alpha = 0.8), size = 5, vjust = -0.5, label.padding = unit(0.05, "lines")) +
     scale_fill_manual(values = c("#006d2c", "#a63603", "#4292c6")) +
@@ -635,7 +701,7 @@ plot_layout(nrow = 2, heights = c(1, 3), axes = "collect")
 
 # ggsave("output/2024.10.04_TruffleFreq_seasonal_freeX.png", width = 19, height = 10, units = "in")
 # ggsave("output/2024.10.05_TruffleFreq_seasonal_freeX.png", width = 19, height = 10, units = "in")
-ggsave("output/2024.02.01_TruffleFreq_all.svg", width = 15, height = 15, units = "in")
+# ggsave("output/2024.02.01_TruffleFreq_all.svg", width = 15, height = 15, units = "in")
 
 ## Stacked ----
 ggplot(abundance.seasonal, aes(x = Genus, y = ct, fill = category)) +
@@ -705,3 +771,35 @@ ggplot(nats, aes(x = reorder(scientific_name, -ct), y = ct)) +
         panel.grid.minor = element_blank())
 
 ggsave("visualizations/2024.06.04_NATSTruffleFreq.png", width = 10, height = 10, units = "in")
+
+# Habitat abundance ----
+trufflecounts.habitat = trufflepoints |>
+  filter(Genus != "Zygomyces") |>
+  group_by(Habitat, Genus) |>
+  summarize(n = length(Point))
+
+abundance.habitat = trufflecounts.habitat |>
+  rename(ct = n) |>
+  arrange(ct) |>
+  filter(!Genus %in% c("Unknown"))
+
+ggplot(abundance.habitat |> filter(Habitat == "Oak") |>
+         filter(!Genus %in% c("Glomeraceae", "Endogone", "Rhizopogon","Scleroderma")),
+       aes(x = reorder(Genus, -ct), y = ct)) +
+  geom_bar(stat = "identity", fill = "#FEC289FF", colour = "#FEC289FF") +
+  # geom_text(aes(label = ct), size = 5, vjust = -0.5) +
+  geom_label(aes(label = ct, alpha = 0.8), size = 5, vjust = -0.5, label.padding = unit(0.05, "lines")) +
+  # scale_fill_manual(values = c("#006d2c", "#a63603", "#4292c6")) +
+  # scale_fill_manual(values = c("#014636", "#02818a", "#67a9cf", "#d0d1e6"))+
+  # ggh4x::facet_grid2(~Season, scale = "free_x", independent = "x") +
+  ylim(0,175) +
+  labs(x = "", y = "Number of truffles found") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45,hjust = 1, face="bold"),
+        text=element_text(size=20),
+        panel.grid.minor = element_blank(),
+        legend.position = "none",
+        # strip.background = element_rect(fill=background.color)
+        )
+
+ggsave("output/2025.02.16_CSNM_Oaks.png")
